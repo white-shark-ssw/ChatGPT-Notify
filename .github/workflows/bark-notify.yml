@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   bark:
@@ -26,6 +28,7 @@ jobs:
 
           marker = "[BARK_NOTIFY_V1]"
           icon_url = "https://images.ctfassets.net/j22is2dtoxu1/intercom-img-d177d076c9a5453052925143/49d5d812b0a6fcc20a14faa8c629d9fb/icon-ios-1024_401x.png"
+          bark_group = "ChatGPT-Notify"
           event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
           issue = event.get("issue") or {}
           comment = event.get("comment") or {}
@@ -64,7 +67,6 @@ jobs:
           project = str(data.get("project", "")).strip()
           body = str(data.get("body", "")).strip()
           title = str(data.get("title", "")).strip() or project
-          group = str(data.get("group", "")).strip() or "ChatGPT"
           url = str(data.get("url", "")).strip()
 
           if not project:
@@ -76,7 +78,6 @@ jobs:
               "project": (project, 80),
               "title": (title, 120),
               "body": (body, 500),
-              "group": (group, 80),
               "url": (url, 1000),
           }
           for name, (value, limit) in limits.items():
@@ -88,7 +89,7 @@ jobs:
               if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                   raise SystemExit("url must be an absolute http(s) URL")
 
-          payload = {"device_key": bark_key, "title": title, "body": body, "group": group, "icon": icon_url}
+          payload = {"device_key": bark_key, "title": title, "body": body, "group": bark_group, "icon": icon_url}
           if url:
               payload["url"] = url
 
@@ -124,3 +125,28 @@ jobs:
 
           print("Bark API accepted notification.")
           PY
+
+      - name: Delete transient notification comment
+        if: always() && steps.prepare.outputs.notify == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          comment_id=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+          print((event.get("comment") or {}).get("id") or "")
+          PY
+          )
+          if [ -z "${comment_id}" ]; then
+            echo "Notification comment id is missing."
+            exit 1
+          fi
+          curl --silent --show-error --fail \
+            --request DELETE \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}"
+          echo "Transient notification comment deleted."
