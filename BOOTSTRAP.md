@@ -9,6 +9,7 @@
 - Channel PR: `#1`
 - Protocol: `BARK_NOTIFY_V1`
 - Bark group: `ChatGPT-Notify`
+- Default policy: **every final reply**
 
 ## 给项目会话的执行要求
 
@@ -17,7 +18,7 @@
 1. 先读取当前项目已有的 `AGENTS.md`、项目启动规则和文档规则，确认真实启动入口。
 2. 不猜测目录结构；只在确认后修改。
 3. 将本仓库 `templates/CHATGPT_NOTIFY_RULES.md` 的规则内容复制到当前项目合适的位置，推荐：`docs/automation/CHATGPT_NOTIFY_RULES.md`。
-4. 将 `templates/PROJECT_RULE_SNIPPET.md` 的启动片段合并到当前项目真实启动入口，例如 `AGENTS.md`。
+4. 将强制通知要求直接合并到当前项目的**第一启动规则**，优先 `AGENTS.md`：每一个面向用户的最终回答都必须触发一次 ChatGPT-Notify，并读取详细通知规则。不要只依赖二级/间接引用。
 5. 将模板中的 `{{PROJECT_NAME}}` 替换为当前项目的稳定短名称。
 6. `NOTIFY_REPO` 固定使用 `white-shark-ssw/ChatGPT-Notify`，`CHANNEL_PR` 固定使用 `1`，不要要求用户再次提供。
 7. 不把 Bark Key 写入业务项目；Bark Key 只存在通知中心仓库的 GitHub Actions Secret `BARK_KEY`。
@@ -26,12 +27,14 @@
 
 ## 接入后的运行语义
 
-项目会话在重要任务真正完成、最终回答已经准备好之后，应在输出最终回答之前向 `white-shark-ssw/ChatGPT-Notify` PR `#1` 添加一条顶层 PR Conversation 评论：
+项目会话的**每一个最终回答**在准备完成后、输出给用户之前，都必须向 `white-shark-ssw/ChatGPT-Notify` PR `#1` 添加一条顶层 PR Conversation 评论：
 
 ```text
 [BARK_NOTIFY_V1]
 {"project":"<PROJECT_NAME>","title":"<当前会话标题或自然生成的任务标题>","body":"<最终回答开头的正文预览，建议 150–500 字符>","url":"https://chatgpt.com/"}
 ```
+
+不再根据任务重要性、耗时、代码修改、回答长度或问答类型过滤。普通寒暄、简单事实问答和短澄清只要是最终回答也通知。中间进度、commentary、工具过程不单独通知；每个用户轮次最多一次。
 
 通知中心 workflow 会统一把 Bark `group` 设置为 `ChatGPT-Notify`，业务项目无需传分组值。为兼容旧项目，输入中的旧 `group` 字段仍可存在，但会被忽略。
 
@@ -51,7 +54,7 @@
 
 ### Action 推送后彻底删除
 
-通知中心 workflow 在 Bark 处理结束后会使用 GitHub Actions 自带的 `GITHUB_TOKEN` 删除该临时评论。当前 workflow 授予 `issues: write` 与 `pull-requests: write`，run #10 已真测确认：Bark 推送成功后，删除步骤也成功，测试 comment 已从 PR 评论列表消失。
+通知中心 workflow 在 Bark 处理结束后会使用 GitHub Actions 自带的 `GITHUB_TOKEN` 删除该临时评论。当前 workflow 授予 `issues: write` 与 `pull-requests: write`，已真测确认 Bark 推送成功后删除步骤也成功。
 
 因此正常生命周期是：
 
@@ -59,7 +62,11 @@
 创建完整 payload → 立即擦除正文 → Action 推 Bark → Action 删除评论
 ```
 
-这样既尽量缩短 Public 仓库中的正文暴露时间，也避免 PR 长期堆积占位评论。
+这样既尽量缩短 Public 仓库中的正文暴露时间，也避免 PR 长期堆积占位评论。GitHub PR Timeline 仍可能保留 `github-actions Bot deleted a comment` 一类删除事件记录；该记录不包含已删除正文。
+
+## 已打开会话
+
+仓库规则变更不会自动重新注入已经打开的旧 ChatGPT 会话。接入或规则变更前已经打开的会话，需要一次性重新读取当前项目第一启动规则（例如 `AGENTS.md`）和详细通知规则；之后才能按新规则执行。新会话应由项目启动链自动加载。
 
 这种机制仍不是绝对隐私保证。评论在“创建 → 擦除”两次 API 调用之间可能短暂公开，因此禁止在通知 payload 中放入密码、Token、Cookie、Bark Key、私有下载地址或其他秘密信息。
 
