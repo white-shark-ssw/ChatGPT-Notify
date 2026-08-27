@@ -30,11 +30,7 @@ jobs:
           comment = event.get("comment") or {}
           raw = str(comment.get("body") or "")
 
-          should_notify = (
-              issue.get("number") == 1
-              and bool(issue.get("pull_request"))
-              and raw.startswith(marker)
-          )
+          should_notify = issue.get("number") == 1 and bool(issue.get("pull_request")) and raw.startswith(marker)
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"notify={'true' if should_notify else 'false'}\n")
@@ -91,12 +87,7 @@ jobs:
               if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                   raise SystemExit("url must be an absolute http(s) URL")
 
-          payload = {
-              "device_key": bark_key,
-              "title": title,
-              "body": body,
-              "group": group,
-          }
+          payload = {"device_key": bark_key, "title": title, "body": body, "group": group}
           if url:
               payload["url"] = url
 
@@ -106,12 +97,17 @@ jobs:
       - name: Push to Bark
         if: steps.prepare.outputs.notify == 'true'
         run: |
-          curl --silent --show-error --fail-with-body \
+          http_code=$(curl --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
             --data-binary @bark_payload.json \
             "https://api.day.app/push" \
-            --output bark_response.json
+            --output bark_response.json \
+            --write-out "%{http_code}")
+          echo "Bark HTTP status: ${http_code}"
+          echo "Bark response:"
+          cat bark_response.json
+          echo
 
       - name: Verify Bark response
         if: steps.prepare.outputs.notify == 'true'
