@@ -13,6 +13,7 @@
 - Bootstrap: `https://github.com/white-shark-ssw/ChatGPT-Notify/blob/main/BOOTSTRAP.md`
 - Notification PR: `#1`
 - Protocol: `BARK_NOTIFY_V1`
+- Bark group: `ChatGPT-Notify`（由通知中心强制设置）
 
 执行要求：
 
@@ -31,7 +32,7 @@
 
 ```text
 [BARK_NOTIFY_V1]
-{"project":"<PROJECT_NAME>","title":"<当前会话标题或自然生成的任务标题>","body":"<最终回答开头的正文预览，建议 150–500 字符>","group":"ChatGPT","url":"https://chatgpt.com/"}
+{"project":"<PROJECT_NAME>","title":"<当前会话标题或自然生成的任务标题>","body":"<最终回答开头的正文预览，建议 150–500 字符>","url":"https://chatgpt.com/"}
 ```
 
 11. 创建评论成功后，必须读取工具返回的 comment id，并立即把同一条顶层评论更新为：
@@ -46,9 +47,11 @@
 
 通知正文应来自已经准备好的最终回答开头，保留必要换行，尽量让 Bark 展开后的阅读体验接近 ChatGPT 官方 iOS 推送，而不是只写一句“任务完成”。
 
-通知中心 workflow 只监听 `issue_comment: created`。真实测试已经确认，创建后立即编辑评论不会破坏本次 Bark 推送；Action 会继续使用创建事件中的原始 payload，而公开 PR 评论正文会迅速被擦除。
+业务项目不需要传 Bark 分组。通知中心会统一把所有 ChatGPT 项目通知设置为 `ChatGPT-Notify` 分组。为兼容旧规则，即使 payload 中仍包含 `group`，通知中心也会忽略其值。
 
-不要尝试让默认 GitHub Actions `GITHUB_TOKEN` 删除这条用户评论；当前真实测试中即使授予 `Issues: write` 仍返回 HTTP 403，该方案已否定。
+通知中心 workflow 只监听 `issue_comment: created`。真实测试已经确认，创建后立即编辑评论不会破坏本次 Bark 推送；Action 会继续使用创建事件中的原始 payload。
+
+Action 在 Bark 处理结束后会删除这条临时评论。当前 workflow 已同时授予 `issues: write` 与 `pull-requests: write`，run #10 已真测确认删除步骤成功。因此正常情况下公开 PR 不会积累占位留言。
 
 即时擦除仍不是绝对隐私保证，因此通知 payload 中禁止放入任何秘密或高敏感信息。
 
