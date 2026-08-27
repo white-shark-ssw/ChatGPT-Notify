@@ -9,28 +9,41 @@ permissions:
 
 jobs:
   bark:
-    if: >-
-      github.event.issue.number == 1 &&
-      github.event.issue.pull_request != null &&
-      startsWith(github.event.comment.body, '[BARK_NOTIFY_V1]')
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
     steps:
       - name: Build Bark payload
+        id: prepare
         env:
-          COMMENT_BODY: ${{ github.event.comment.body }}
           BARK_KEY: ${{ secrets.BARK_KEY }}
         run: |
           python3 - <<'PY'
           import json
           import os
+          from pathlib import Path
           from urllib.parse import urlparse
 
           marker = "[BARK_NOTIFY_V1]"
-          raw = os.environ["COMMENT_BODY"]
-          bark_key = os.environ.get("BARK_KEY", "").strip()
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+          issue = event.get("issue") or {}
+          comment = event.get("comment") or {}
+          raw = str(comment.get("body") or "")
 
+          should_notify = (
+              issue.get("number") == 1
+              and bool(issue.get("pull_request"))
+              and raw.startswith(marker)
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"notify={'true' if should_notify else 'false'}\n")
+
+          if not should_notify:
+              print("Comment is not a Bark notification event; skipping.")
+              raise SystemExit(0)
+
+          bark_key = os.environ.get("BARK_KEY", "").strip()
           if not bark_key:
               raise SystemExit("BARK_KEY secret is missing")
 
@@ -87,11 +100,11 @@ jobs:
           if url:
               payload["url"] = url
 
-          with open("bark_payload.json", "w", encoding="utf-8") as f:
-              json.dump(payload, f, ensure_ascii=False)
+          Path("bark_payload.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
           PY
 
       - name: Push to Bark
+        if: steps.prepare.outputs.notify == 'true'
         run: |
           curl --silent --show-error --fail-with-body \
             --request POST \
@@ -101,6 +114,7 @@ jobs:
             --output bark_response.json
 
       - name: Verify Bark response
+        if: steps.prepare.outputs.notify == 'true'
         run: |
           python3 - <<'PY'
           import json
