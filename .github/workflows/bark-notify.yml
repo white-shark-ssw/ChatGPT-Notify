@@ -2,7 +2,7 @@ name: Bark notification
 
 on:
   issue_comment:
-    types: [created, edited]
+    types: [created]
 
 permissions:
   contents: read
@@ -27,25 +27,18 @@ jobs:
           from urllib.parse import urlparse
 
           marker = "[BARK_NOTIFY_V1]"
-          redacted_prefix = "<!-- ChatGPT-Notify"
           icon_url = "https://images.ctfassets.net/j22is2dtoxu1/intercom-img-d177d076c9a5453052925143/49d5d812b0a6fcc20a14faa8c629d9fb/icon-ios-1024_401x.png"
           bark_group = "ChatGPT-Notify"
           event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
           issue = event.get("issue") or {}
           comment = event.get("comment") or {}
-          action = str(event.get("action") or "")
           raw = str(comment.get("body") or "")
-          is_channel = issue.get("number") == 1 and bool(issue.get("pull_request"))
-          should_notify = is_channel and action == "created" and raw.startswith(marker)
-          should_cleanup = is_channel and action == "edited" and raw.startswith(redacted_prefix)
+
+          should_notify = issue.get("number") == 1 and bool(issue.get("pull_request")) and raw.startswith(marker)
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"notify={'true' if should_notify else 'false'}\n")
-              f.write(f"cleanup={'true' if should_cleanup else 'false'}\n")
 
-          if should_cleanup:
-              print("Historical redacted notification comment scheduled for deletion.")
-              raise SystemExit(0)
           if not should_notify:
               print("Comment is not a Bark notification event; skipping.")
               raise SystemExit(0)
@@ -125,7 +118,7 @@ jobs:
           PY
 
       - name: Delete transient notification comment
-        if: always() && (steps.prepare.outputs.notify == 'true' || steps.prepare.outputs.cleanup == 'true')
+        if: always() && steps.prepare.outputs.notify == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
