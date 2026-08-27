@@ -25,6 +25,7 @@ jobs:
           from urllib.parse import urlparse
 
           marker = "[BARK_NOTIFY_V1]"
+          icon_url = "https://images.ctfassets.net/j22is2dtoxu1/intercom-img-d177d076c9a5453052925143/49d5d812b0a6fcc20a14faa8c629d9fb/icon-ios-1024_401x.png"
           event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
           issue = event.get("issue") or {}
           comment = event.get("comment") or {}
@@ -87,7 +88,7 @@ jobs:
               if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                   raise SystemExit("url must be an absolute http(s) URL")
 
-          payload = {"device_key": bark_key, "title": title, "body": body, "group": group}
+          payload = {"device_key": bark_key, "title": title, "body": body, "group": group, "icon": icon_url}
           if url:
               payload["url"] = url
 
