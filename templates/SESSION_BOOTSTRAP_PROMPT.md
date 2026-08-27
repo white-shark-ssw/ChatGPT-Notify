@@ -31,8 +31,14 @@
 
 ```text
 [BARK_NOTIFY_V1]
-{"project":"<PROJECT_NAME>","title":"ChatGPT · <PROJECT_NAME>","body":"<本轮完成内容的一句话摘要>","group":"ChatGPT","url":"https://chatgpt.com/"}
+{"project":"<PROJECT_NAME>","title":"<当前会话标题或自然生成的任务标题>","body":"<最终回答开头的正文预览，建议 150–500 字符>","group":"ChatGPT","url":"https://chatgpt.com/"}
 ```
+
+通知标题优先使用当前真实 ChatGPT 会话标题；如果当前环境无法可靠取得会话标题，则根据当前会话主题生成自然短标题，不得假装已读取 UI 标题。
+
+通知正文应来自已经准备好的最终回答开头，保留必要换行，尽量让 Bark 展开后的阅读体验接近 ChatGPT 官方 iOS 推送，而不是只写一句“任务完成”。
+
+通知中心会在 Bark 处理结束后自动删除这条临时 PR 评论；业务项目会话不需要自行删除。即使如此，评论在删除前仍可能短暂公开，因此禁止放入任何秘密或高敏感信息。
 
 通知只表示“本轮完整回答已经准备输出”；不得把它错误描述成 CI、构建产物、真机测试或稳定性证据。
 
