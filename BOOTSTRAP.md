@@ -36,9 +36,21 @@
 
 通知正文应来自已经准备好的最终回答开头，保留必要换行，让 Bark 展开后能看到更多实际回答内容，而不是只发一句“任务完成”。
 
-通知中心 GitHub Action 会在 Bark 处理结束后立即尝试删除这条临时 PR 评论；即使 Bark 处理失败，也会尽量清理。因此业务项目会话只负责创建评论，不需要再次删除。
+### 创建后立即擦除公开正文
 
-临时评论仍可能在极短时间内公开，因此禁止在通知 payload 中放入密码、Token、Cookie、Bark Key、私有下载地址或其他秘密信息。
+创建评论成功后，项目会话必须保存返回的 comment id，并立刻调用 GitHub 顶层评论更新能力，把同一条评论改成：
+
+```text
+<!-- ChatGPT-Notify transient payload redacted -->
+```
+
+真实测试已经确认：`issue_comment: created` workflow 会继续使用创建事件中的原始 payload 推 Bark；立即编辑评论不会破坏本次推送，也不会触发第二次 workflow，因为通知中心只监听 `created`。
+
+如果创建成功但擦除失败，最终回答中必须明确提醒用户检查通知 PR #1，不能静默留下完整正文。
+
+不要尝试让默认 GitHub Actions `GITHUB_TOKEN` 删除这条用户评论；当前真实测试中即使授予 `Issues: write` 仍返回 HTTP 403，该方案已否定。
+
+这种即时擦除会显著缩短 Public 仓库中的可见时间，但仍不是绝对隐私保证。评论在两次 API 调用之间仍可能短暂公开，因此禁止在通知 payload 中放入密码、Token、Cookie、Bark Key、私有下载地址或其他秘密信息。
 
 通知成功只代表“本轮完整回答已准备输出”，不能夸大为 CI passed、IPA produced、真机验证或问题已稳定解决。
 
