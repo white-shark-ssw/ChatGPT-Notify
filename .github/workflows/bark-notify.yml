@@ -1,0 +1,115 @@
+name: Bark notification
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  bark:
+    if: >-
+      github.event.issue.number == 1 &&
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '[BARK_NOTIFY_V1]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Build Bark payload
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.parse import urlparse
+
+          marker = "[BARK_NOTIFY_V1]"
+          raw = os.environ["COMMENT_BODY"]
+          bark_key = os.environ.get("BARK_KEY", "").strip()
+
+          if not bark_key:
+              raise SystemExit("BARK_KEY secret is missing")
+
+          lines = raw.splitlines()
+          if not lines or lines[0].strip() != marker:
+              raise SystemExit("Invalid notification marker")
+
+          json_text = "\n".join(lines[1:]).strip()
+          if not json_text:
+              raise SystemExit("Missing JSON payload")
+
+          data = json.loads(json_text)
+          if not isinstance(data, dict):
+              raise SystemExit("Payload must be a JSON object")
+
+          allowed = {"project", "title", "body", "group", "url"}
+          unknown = set(data) - allowed
+          if unknown:
+              raise SystemExit(f"Unknown fields: {sorted(unknown)}")
+
+          project = str(data.get("project", "")).strip()
+          body = str(data.get("body", "")).strip()
+          title = str(data.get("title", "")).strip() or f"ChatGPT · {project}"
+          group = str(data.get("group", "")).strip() or "ChatGPT"
+          url = str(data.get("url", "")).strip()
+
+          if not project:
+              raise SystemExit("project is required")
+          if not body:
+              raise SystemExit("body is required")
+
+          limits = {
+              "project": (project, 80),
+              "title": (title, 120),
+              "body": (body, 500),
+              "group": (group, 80),
+              "url": (url, 1000),
+          }
+          for name, (value, limit) in limits.items():
+              if len(value) > limit:
+                  raise SystemExit(f"{name} exceeds {limit} characters")
+
+          if url:
+              parsed = urlparse(url)
+              if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                  raise SystemExit("url must be an absolute http(s) URL")
+
+          payload = {
+              "device_key": bark_key,
+              "title": title,
+              "body": body,
+              "group": group,
+          }
+          if url:
+              payload["url"] = url
+
+          with open("bark_payload.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f, ensure_ascii=False)
+          PY
+
+      - name: Push to Bark
+        run: |
+          curl --silent --show-error --fail-with-body \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data-binary @bark_payload.json \
+            "https://api.day.app/push" \
+            --output bark_response.json
+
+      - name: Verify Bark response
+        run: |
+          python3 - <<'PY'
+          import json
+
+          with open("bark_response.json", "r", encoding="utf-8") as f:
+              response = json.load(f)
+
+          if response.get("code") != 200:
+              raise SystemExit(f"Bark API rejected push: {response}")
+
+          print("Bark API accepted notification.")
+          PY
