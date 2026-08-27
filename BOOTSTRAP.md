@@ -15,8 +15,7 @@
 
 1. 先读取当前项目已有的 `AGENTS.md`、项目启动规则和文档规则，确认真实启动入口。
 2. 不猜测目录结构；只在确认后修改。
-3. 将本仓库 `templates/CHATGPT_NOTIFY_RULES.md` 的规则内容复制到当前项目合适的位置，推荐：
-   `docs/automation/CHATGPT_NOTIFY_RULES.md`。
+3. 将本仓库 `templates/CHATGPT_NOTIFY_RULES.md` 的规则内容复制到当前项目合适的位置，推荐：`docs/automation/CHATGPT_NOTIFY_RULES.md`。
 4. 将 `templates/PROJECT_RULE_SNIPPET.md` 的启动片段合并到当前项目真实启动入口，例如 `AGENTS.md`。
 5. 将模板中的 `{{PROJECT_NAME}}` 替换为当前项目的稳定短名称。
 6. `NOTIFY_REPO` 固定使用 `white-shark-ssw/ChatGPT-Notify`，`CHANNEL_PR` 固定使用 `1`，不要要求用户再次提供。
@@ -26,16 +25,20 @@
 
 ## 接入后的运行语义
 
-项目会话在重要任务真正完成、最终回答已经准备好之后，应在输出最终回答之前向：
-
-`white-shark-ssw/ChatGPT-Notify` PR `#1`
-
-添加一条顶层 PR Conversation 评论：
+项目会话在重要任务真正完成、最终回答已经准备好之后，应在输出最终回答之前向 `white-shark-ssw/ChatGPT-Notify` PR `#1` 添加一条顶层 PR Conversation 评论：
 
 ```text
 [BARK_NOTIFY_V1]
-{"project":"<PROJECT_NAME>","title":"ChatGPT · <PROJECT_NAME>","body":"<本轮完成内容的一句话摘要>","group":"ChatGPT","url":"https://chatgpt.com/"}
+{"project":"<PROJECT_NAME>","title":"<当前会话标题或自然生成的任务标题>","body":"<最终回答开头的正文预览，建议 150–500 字符>","group":"ChatGPT","url":"https://chatgpt.com/"}
 ```
+
+通知标题尽量采用当前真实 ChatGPT 会话标题；如果当前环境无法可靠取得会话标题，则根据会话主题生成一个自然短标题，不得假装已读取到真实 UI 标题。
+
+通知正文应来自已经准备好的最终回答开头，保留必要换行，让 Bark 展开后能看到更多实际回答内容，而不是只发一句“任务完成”。
+
+通知中心 GitHub Action 会在 Bark 处理结束后立即尝试删除这条临时 PR 评论；即使 Bark 处理失败，也会尽量清理。因此业务项目会话只负责创建评论，不需要再次删除。
+
+临时评论仍可能在极短时间内公开，因此禁止在通知 payload 中放入密码、Token、Cookie、Bark Key、私有下载地址或其他秘密信息。
 
 通知成功只代表“本轮完整回答已准备输出”，不能夸大为 CI passed、IPA produced、真机验证或问题已稳定解决。
 
