@@ -44,8 +44,24 @@
 
 ## 临时评论生命周期
 
-`[BARK_NOTIFY_V1]` 评论只作为 GitHub Actions 的临时传输载体。
+`[BARK_NOTIFY_V1]` 评论只作为极短暂的 GitHub Actions 创建事件载体。
 
-工作流会在 Bark 处理结束后立即尝试删除触发评论；清理步骤使用 GitHub `GITHUB_TOKEN` 的 `issues: write` 权限。即使 Bark 处理失败，清理步骤仍会通过 `always()` 尽量执行。
+项目会话创建通知评论后，必须使用创建结果返回的 comment id，立刻把同一条评论更新为：
 
-因此正常情况下，通知评论只会短暂存在数秒。但仓库是 Public 时，短暂公开仍不等于绝对私密：第三方抓取、缓存或平台内部留存仍理论上可能发生，所以不得依赖“自动删除”来承载秘密信息。
+```text
+<!-- ChatGPT-Notify transient payload redacted -->
+```
+
+通知中心 workflow 只监听 `issue_comment: created`，因此编辑评论不会触发第二次推送。真实测试 run #9 已确认：即使公开评论已经立刻被改成隐藏占位符，GitHub Actions 仍然使用创建事件中的原始正文完成 Bark 推送。
+
+## 为什么不是 GitHub Action 自己删除
+
+曾实测在 workflow 中给默认 `GITHUB_TOKEN` 授予 `Issues: write`，并调用删除 issue comment 的 REST API。Bark 推送成功，但删除步骤返回 HTTP 403。因此该自动删除方案不作为当前协议。
+
+如果未来一定要彻底删除占位评论，应额外提供一个仅限本通知仓库、具备最小 Issues write 权限的独立凭证，再由 Action 删除。不要使用广泛 repo 权限 PAT，也不要把删除凭证分发到业务项目。
+
+## 隐私边界
+
+即时擦除会把公开正文暴露窗口压缩到“创建评论 → 更新评论”两次 GitHub API 调用之间，通常只有极短时间，比等待 GitHub Actions 执行完成后再删除更安全。
+
+但它仍不构成绝对私密：在被擦除前，第三方理论上仍可能抓取或缓存；GitHub 平台内部也可能保留事件数据。因此不得依赖本机制传输秘密或高敏感内容。
