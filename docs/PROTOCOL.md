@@ -14,7 +14,7 @@
 
 ```text
 [BARK_NOTIFY_V1]
-{"project":"OnePlayer","title":"播放器 Seek 与缓存诊断","body":"可以，当前这轮已经把 Seek 日志与 Transport 状态重新对齐。\n\n从现有证据看，时间基准更新是主要问题……","group":"ChatGPT","url":"https://chatgpt.com/"}
+{"project":"OnePlayer","title":"播放器 Seek 与缓存诊断","body":"可以，当前这轮已经把 Seek 日志与 Transport 状态重新对齐。\n\n从现有证据看，时间基准更新是主要问题……","url":"https://chatgpt.com/"}
 ```
 
 ## 字段
@@ -22,8 +22,18 @@
 - `project`：必需，项目稳定短名称。
 - `title`：可选，优先使用当前真实 ChatGPT 会话标题；无法可靠取得时使用自然生成的任务标题。
 - `body`：必需，来自已经准备好的最终回答开头的正文预览，最多 500 字符。
-- `group`：可选，默认 `ChatGPT`。
 - `url`：可选，点击 Bark 通知后的跳转 URL。
+- `group`：兼容字段。旧项目可以继续传，但通知中心会忽略其值。
+
+## 固定 Bark 分组
+
+所有通过本通知中心发送的 Bark 通知统一使用：
+
+```text
+ChatGPT-Notify
+```
+
+该值由 `.github/workflows/bark-notify.yml` 强制设置，业务项目不能覆盖。这样所有 ChatGPT 项目通知会在 Bark 中进入一个独立分组，不与其他 Bark 来源混杂。
 
 ## 工作流拒绝条件
 
@@ -52,16 +62,23 @@
 <!-- ChatGPT-Notify transient payload redacted -->
 ```
 
-通知中心 workflow 只监听 `issue_comment: created`，因此编辑评论不会触发第二次推送。真实测试 run #9 已确认：即使公开评论已经立刻被改成隐藏占位符，GitHub Actions 仍然使用创建事件中的原始正文完成 Bark 推送。
+通知中心 workflow 只监听 `issue_comment: created`，因此编辑评论不会触发第二次推送。真实测试 run #9 已确认：即使公开评论已经立刻被改成隐藏占位符，GitHub Actions 仍会使用创建事件中的原始正文完成 Bark 推送。
 
-## 为什么不是 GitHub Action 自己删除
+随后 workflow 会在 Bark 处理结束后删除该临时评论。当前 workflow 同时授予 `issues: write` 与 `pull-requests: write`；run #10 已确认删除步骤成功，测试 comment 已从 PR 评论列表消失。
 
-曾实测在 workflow 中给默认 `GITHUB_TOKEN` 授予 `Issues: write`，并调用删除 issue comment 的 REST API。Bark 推送成功，但删除步骤返回 HTTP 403。因此该自动删除方案不作为当前协议。
+最终生命周期：
 
-如果未来一定要彻底删除占位评论，应额外提供一个仅限本通知仓库、具备最小 Issues write 权限的独立凭证，再由 Action 删除。不要使用广泛 repo 权限 PAT，也不要把删除凭证分发到业务项目。
+```text
+创建完整 payload
+→ 项目会话立即擦除正文
+→ Action 使用 created 事件原始 payload 推 Bark
+→ Action 删除临时评论
+```
+
+即时擦除保护短时公开内容，最终删除保持 PR 整洁。
 
 ## 隐私边界
 
-即时擦除会把公开正文暴露窗口压缩到“创建评论 → 更新评论”两次 GitHub API 调用之间，通常只有极短时间，比等待 GitHub Actions 执行完成后再删除更安全。
+该机制会把公开正文暴露窗口压缩到“创建评论 → 更新评论”两次 GitHub API 调用之间，并在 Action 完成后连占位评论一起删除。
 
 但它仍不构成绝对私密：在被擦除前，第三方理论上仍可能抓取或缓存；GitHub 平台内部也可能保留事件数据。因此不得依赖本机制传输秘密或高敏感内容。
